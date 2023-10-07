@@ -132,7 +132,7 @@ class Detector:
                 # Stream results
                 self.send_result(stream_object, results)
             if self.show_stream:
-                print(p)
+                # print(p)
                 im0 = annotator.result()
                 if platform.system() == 'Linux' and p not in windows:
                     windows.append(p)
