@@ -17,13 +17,10 @@ class StreamProcessor(Thread):
     def run(self) -> None:
         stream = self.stream
         stream_object = self.stream_object
-        # stream = stream_manager.streams[self.stream_id]
-        # stream_object = stream_manager.stream_objects[self.stream_id]
-        batch_size = len(stream)
         for path, im, im0s, vid_cap, s in stream:
+            # print("runrunrunrunrun 222", self.stop)
             if self.stop:
                 break
-            stream_count = stream.count
             # print('on_stream')
             stream_data = (path, im, im0s, vid_cap, s)
             detector.detect(stream, stream_object, stream_data)
@@ -36,15 +33,14 @@ class StreamManager:
         self.streams_threads: Dict[int, StreamProcessor] = {}
 
     def add_stream(self, stream: StreamInDB):
-        print(2)
         if not stream.id in self.stream_objects:
-            print(3)
             self.stream_objects[stream.id] = stream
             stream_dataset = LoadStreams(stream.source,
                                          img_size=stream.img_size,
                                          stride=stream.stride,
                                          auto=True,
-                                         vid_stride=1)
+                                         vid_stride=1,
+                                         debounce_time=0.1)
             self.streams[stream.id] = stream_dataset
             t = StreamProcessor(stream.id, stream_dataset, stream)
             self.streams_threads[stream.id] = t

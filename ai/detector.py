@@ -20,11 +20,18 @@ class Detector:
         super().__init__()
         self.weights = weights
         self.device = device
-        self.model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
+        self.dnn = dnn
+        self.data = data
+        self.half = half
+        self.model = None
+        self.stride, self.names, self.pt = None, None, None
+
+    def load_model(self):
+        self.model = DetectMultiBackend(self.weights, device=self.device, dnn=self.dnn, data=self.data, fp16=self.half)
         self.stride, self.names, self.pt = self.model.stride, self.model.names, self.model.pt
 
     def send_result(self, stream_object: StreamInDB, results):
-        print("result of stream id ",stream_object.id)
+        print("result of stream id ", stream_object.id)
         print(results)
         # pass
 
@@ -91,8 +98,8 @@ class Detector:
         return dst
 
     def detect(self, stream: LoadStreams, stream_object: StreamInDB, stream_data: List[Any]):
-        # print('process_stream >>>>', stream_object.id)
-        # return
+        print('process_stream >>>>', stream_object.id)
+        return
         conf_thres = 0.25  # confidence threshold
         iou_thres = 0.45  # NMS IOU threshold
         max_det = 1000  # maximum detections per image
@@ -102,7 +109,8 @@ class Detector:
 
         boundary = stream_object.boundary
         classes = stream_object.classes  # filter by class: --class 0, or --class 0 2 3
-
+        if isinstance(classes, list) and len(classes) == 0:
+            classes = None
         # Run inference
         seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
         if isinstance(path, list) and len(path) > 0:
@@ -127,6 +135,7 @@ class Detector:
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
+
             seen += 1
 
             if len(stream) >= 1:  # batch_size >= 1

@@ -342,11 +342,15 @@ class LoadImages:
 
 class LoadStreams:
     # YOLOv5 streamloader, i.e. `python detect.py --source 'rtsp://example.com/media.mp4'  # RTSP, RTMP, HTTP streams`
-    def __init__(self, sources='file.streams', img_size=640, stride=32, auto=True, transforms=None, vid_stride=1):
+    def __init__(self, sources='file.streams',
+                 img_size=640, stride=32, auto=True,
+                 transforms=None, vid_stride=1,
+                 debounce_time=0.0):
         torch.backends.cudnn.benchmark = True  # faster for fixed-size inference
         self.mode = 'stream'
         self.img_size = img_size
         self.stride = stride
+        self.debounce_time = debounce_time
         self.vid_stride = vid_stride  # video frame-rate stride
         sources = Path(sources).read_text().rsplit() if os.path.isfile(sources) else [sources]
         n = len(sources)
@@ -364,7 +368,9 @@ class LoadStreams:
             if s == 0:
                 assert not is_colab(), '--source 0 webcam unsupported on Colab. Rerun command in a local environment.'
                 assert not is_kaggle(), '--source 0 webcam unsupported on Kaggle. Rerun command in a local environment.'
+            print("---->>>>>> cv2.VideoCapture(s)", s)
             cap = cv2.VideoCapture(s)
+            print("---->>>>>> cv2.VideoCapture(s) 2", s)
             assert cap.isOpened(), f'{st}Failed to open {s}'
             w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -400,7 +406,7 @@ class LoadStreams:
                     LOGGER.warning('WARNING ⚠️ Video stream unresponsive, please check your IP camera connection.')
                     self.imgs[i] = np.zeros_like(self.imgs[i])
                     cap.open(stream)  # re-open stream if signal was lost
-            time.sleep(0.0)  # wait time
+            time.sleep(self.debounce_time)  # wait time
 
     def __iter__(self):
         self.count = -1

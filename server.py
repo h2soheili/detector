@@ -10,7 +10,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from backend.api import api_v1_router
 from backend.config import settings
 from backend.global_log import structlog
-from backend.instances import stream_manager
+from backend.instances import stream_manager, stream, detector
 
 logger = structlog.get_logger(__name__)
 
@@ -88,7 +88,15 @@ app.include_router(api_v1_router, prefix="/v1")
 
 @app.on_event("startup")
 async def startup_event():
-    await asyncio.sleep(0.1)
+    """
+    lazy load model to not locking app start time
+    """
+    await asyncio.sleep(2)
+    detector.load_model()
+    """
+    auto add stream for development purpose
+    """
+    # stream_manager.add_stream(stream)
 
 
 @app.on_event("shutdown")
