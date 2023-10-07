@@ -67,8 +67,8 @@ async def get_server_config() -> Any:
     return settings.model_dump()
 
 
-@app.websocket("/ws/")
-async def websocket_endpoint(websocket: WebSocket, client_id: int):
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
     try:
         await stream_manager.connect(websocket)
     except Exception as e:

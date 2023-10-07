@@ -24,7 +24,7 @@ class Detector:
         self.stride, self.names, self.pt = self.model.stride, self.model.names, self.model.pt
 
     def send_result(self, stream_object: StreamInDB, results):
-        print(stream_object.id)
+        print("result of stream id ",stream_object.id)
         print(results)
         # pass
 
@@ -98,7 +98,7 @@ class Detector:
         max_det = 1000  # maximum detections per image
         agnostic_nms = False  # class-agnostic NMS
 
-        path, im, im0s, vid_cap, s, batch_size, stream_count = stream_data
+        path, im, im0s, vid_cap, s = stream_data
 
         boundary = stream_object.boundary
         classes = stream_object.classes  # filter by class: --class 0, or --class 0 2 3
@@ -129,8 +129,8 @@ class Detector:
         for i, det in enumerate(pred):  # per image
             seen += 1
 
-            if batch_size >= 1:  # batch_size >= 1
-                p, im0, frame = path[i], im0s[i].copy(), stream_count
+            if len(stream) >= 1:  # batch_size >= 1
+                p, im0, frame = path[i], im0s[i].copy(), stream.count
                 s += f'{i}: '
             else:
                 p, im0, frame = path, im0s.copy(), getattr(stream, 'frame', 0)
