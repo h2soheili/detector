@@ -25,7 +25,7 @@ class StreamProcessor(Thread):
                 break
             stream_count = stream.count
             # print('on_stream')
-            stream_data = (path, im, im0s, vid_cap, s, batch_size, stream_count)
+            stream_data = (path, im, im0s, vid_cap, s)
             detector.detect(stream, stream_object, stream_data)
 
 
