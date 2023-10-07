@@ -34,7 +34,7 @@ import os
 import platform
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 
 import torch
 
@@ -55,6 +55,25 @@ from ai.utils.general import (LOGGER, Profile, check_file, check_img_size, check
                               increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh)
 from ai.utils.torch_utils import select_device, smart_inference_mode
 import numpy as np
+
+last_detected_objects: Dict[int, List[int]] = {}
+
+stream_id = 1
+
+"""
+basic object enter/exit detection
+"""
+
+
+def on_detect(_stream_id, _detected, _names):
+    old_classes = set(last_detected_objects[_stream_id] or [])
+    new_classes = set(_detected["classes"])
+    added = list(new_classes - old_classes)
+    removed = list(old_classes - new_classes)
+    last_detected_objects[_stream_id] = _detected["classes"]
+    print("**********************************************")
+    print("added", [_names[c] for c in added])
+    print("removed", [_names[c] for c in removed])
 
 
 def crop_img(images: List[np.array], boundary: List[np.array] = None, img_size=640, stride=32, auto=True, ):
@@ -146,6 +165,9 @@ def run(
     # Run inference
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
+    if not stream_id in last_detected_objects:
+        last_detected_objects[stream_id] = []
+
     for path, im0s in dataset:
         # print(1)
         im = crop_img(im0s, boundary, img_size=imgsz, stride=stride, auto=pt, )
@@ -180,6 +202,11 @@ def run(
                     writer.writeheader()
                 writer.writerow(data)
 
+        detected = {
+            "classes": [],
+            "labels": [],
+            "confidence": [],
+        }
         # Process predictions
         for i, det in enumerate(pred):  # per image
             seen += 1
@@ -212,7 +239,9 @@ def run(
                     label = names[c] if hide_conf else f'{names[c]}'
                     confidence = float(conf)
                     confidence_str = f'{confidence:.2f}'
-
+                    detected["classes"].append(c)
+                    detected["labels"].append(label)
+                    detected["confidence"].append(confidence)
                     if save_csv:
                         write_to_csv(p.name, label, confidence_str)
 
@@ -260,6 +289,7 @@ def run(
                         vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer[i].write(im0)
 
+        on_detect(stream_id, detected, names)
         # Print time (inference-only)
         LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{dt[1].dt * 1E3:.1f}ms")
 

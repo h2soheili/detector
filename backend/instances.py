@@ -17,7 +17,10 @@ stream = StreamInDB(**{
     "name": "webcam stream",
     "source": "0",
     # "boundary": None, # without bounding box
-    "boundary": [[[20, 20], [1000, 20], [800, 1080], [20, 1080]]],  # base on FHD monitor
+    # "boundary": [[[20, 20], [600, 20], [600, 1060], [20, 1060]]],
+    "boundary": [[[20, 20], [600, 20], [600, 1060], [20, 1060]],
+                 [[1600, 20], [1900, 20], [1900, 1060], [1600, 1060]]],
+    # base on FHD monitor
     "img_size": [480, 480],
     "stride": 32,
     "auto": True,
