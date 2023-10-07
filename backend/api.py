@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from backend.global_log import structlog
 from backend.instances import stream_manager, user
@@ -13,19 +13,13 @@ api_v1_router = APIRouter()
 
 @api_v1_router.post('/stream', response_model=StreamInDB)
 async def add_stream(data: StreamCreateDTO) -> Any:
-    try:
-        stream = StreamInDB(**data.model_dump(), id=1, user=user)
-        stream_manager.add_stream(stream)
-        return stream
-    except Exception as e:
-        logger.error("add_stream error", e=e)
-        raise HTTPException(detail=str(e), status_code=500)
+    print(1)
+    stream = StreamInDB(**data.model_dump(), user=user)
+    # stream = StreamInDB(**data.model_dump(), id=1, user=user)
+    stream_manager.add_stream(stream)
+    return stream
 
 
 @api_v1_router.delete('/stream/{id}', response_model=Any)
 async def remove_stream(id: Any) -> Any:
-    try:
-        stream_manager.remove_stream(int(id))
-    except Exception as e:
-        logger.error("remove_stream error", e=e)
-        raise HTTPException(detail=str(e), status_code=500)
+    stream_manager.remove_stream(int(id))

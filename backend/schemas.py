@@ -1,12 +1,13 @@
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Any
 
 from pydantic import BaseModel
 
 
 class StreamCreateDTO(BaseModel):
+    id: int = 1
     name: Optional[str] = None
     source: Optional[str] = None
-    boundary: Optional[List[Tuple[int, int]]] = None
+    boundary: Optional[List[Any]] = []
     img_size: Tuple[int, int] = (640, 640)
     stride: int = 32
     auto: bool = True
@@ -34,6 +35,7 @@ class StreamInDB(StreamCreateDTO):
 
 
 class DeviceCreateDTO(BaseModel):
+    id: int = 1
     name: Optional[str] = None
     ip: Optional[str] = None
 
