@@ -96,7 +96,7 @@ async def startup_event():
     """
     auto add stream for development purpose
     """
-    # stream_manager.add_stream(stream)
+    stream_manager.add_stream(stream)
 
 
 @app.on_event("shutdown")
