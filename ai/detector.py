@@ -39,7 +39,7 @@ class Detector:
         self.stride, self.names, self.pt = self.model.stride, self.model.names, self.model.pt
 
     def send_result(self, stream_object: StreamInDB, results):
-        print("result of stream id ", stream_object.id, results)
+        print("result of stream with id: ", stream_object.id, results)
         # pass
 
     def resize_and_mask_img(self,

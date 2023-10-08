@@ -10,7 +10,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from backend.api import api_v1_router
 from backend.config import settings
 from backend.global_log import structlog
-from backend.instances import stream_manager, stream, detector
+from backend.instances import stream_manager, stream, detector, socket_manager
 
 logger = structlog.get_logger(__name__)
 
@@ -70,14 +70,15 @@ async def get_server_config() -> Any:
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     try:
-        await stream_manager.connect(websocket)
+        await socket_manager.connect(websocket)
     except Exception as e:
         print(e)
     try:
         while True:
             data = await websocket.receive_text()
+            socket_manager.on_message(data)
     except WebSocketDisconnect:
-        stream_manager.disconnect(websocket)
+        socket_manager.disconnect(websocket)
 
 
 api_router = APIRouter()
