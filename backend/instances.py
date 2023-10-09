@@ -27,6 +27,8 @@ config = DetectorConfigInDB(**{
     "include_classes": None,
     "exclude_classes": [0],
     "after_detect_triggers": [trigger.model_dump()],
+    # "boundary": None, # without bounding box
+    # base on FHD monitor
     "boundary": [[20, 150], [600, 20], [600, 560], [500, 760], [20, 1060]],
 }, user=user)
 
@@ -41,8 +43,6 @@ stream = StreamInDB(**{
     "name": "webcam stream",
     # "source": "https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8",
     "source": "0",
-    # "boundary": None, # without bounding box
-    # base on FHD monitor
     "img_size": [480, 480],
     "stride": 32,
     "auto": True,
