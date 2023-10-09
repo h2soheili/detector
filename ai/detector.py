@@ -80,18 +80,6 @@ class Detector:
         if not stream_id in self.last_detected_objects:
             self.last_detected_objects[stream_id] = {}
         now = datetime.now().timestamp()
-        # old_classes = self.last_detected_objects[stream_object.id] or {}
-        # old_classes_list = list(old_classes.keys())
-        # old_classes_set = set(old_classes_list)
-        # new_classes = [result["class"] for result in detection_results]
-        # new_classes_set = set(new_classes)
-        # added = list(new_classes_set - old_classes_set)
-        #
-        # removed = list(old_classes - new_classes)
-        # self.last_detected_objects[stream_id] = detected["classes"]
-        # print("**********************************************")
-        # print("added", [self.names[c] for c in added])
-        # print("removed", [self.names[c] for c in removed])
         for result in detection_results:
             cls = result["class"]
             # object enters
