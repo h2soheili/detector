@@ -1,7 +1,5 @@
 from typing import Dict, Any
 
-import numpy as np
-
 from ai.utils.dataloaders import LoadStreams2
 from backend.instances import detector
 from backend.schemas import (StreamInDB)
@@ -36,15 +34,13 @@ class StreamManager:
 
     def add_stream(self, stream: StreamInDB):
         if not stream.id in self.stream_objects:
-            if stream.boundary is not None:
-                stream.boundary = [np.array(polygon) for polygon in stream.boundary]
             self.stream_objects[stream.id] = stream
             stream_dataset = LoadStreams2(stream.source,
                                           img_size=stream.img_size,
                                           stride=stream.stride,
                                           auto=True,
                                           vid_stride=1,
-                                          debounce_time=0.1)
+                                          debounce_time=0.0)
             self.streams[stream.id] = stream_dataset
             t = StreamProcessor(stream.id, stream_dataset, stream)
             self.streams_threads[stream.id] = t

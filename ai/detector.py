@@ -1,6 +1,7 @@
 import os
 import platform
-from typing import Any, List
+from datetime import datetime
+from typing import Any, List, Dict
 
 import cv2
 import numpy as np
@@ -33,20 +34,22 @@ class Detector:
         self.half = half
         self.model = None
         self.stride, self.names, self.pt = None, None, None
+        # last_detected_objects - > {"stream_id": {"class_id": {"time": timestamp}}}
+        self.last_detected_objects: Dict[int, Dict[int, Any]] = {}
 
     def load_model(self):
         self.model = DetectMultiBackend(self.weights, device=self.device, dnn=self.dnn, data=self.data, fp16=self.half)
         self.stride, self.names, self.pt = self.model.stride, self.model.names, self.model.pt
 
     def send_result(self, stream_object: StreamInDB, results):
-        print("result of stream with id: ", stream_object.id, results)
-        # pass
+        # print("result of stream with id: ", stream_object.id, results)
+        pass
 
     def resize_and_mask_img(self,
                             images: List[np.array],
                             boundary: List[np.array] = None,
                             img_size=(640, 640), stride=32,
-                            auto=True, ):
+                            auto=True):
         # h: height, w: width, c: channel, b: batch
         apply_mask = boundary is not None
         final_images = []
@@ -68,24 +71,104 @@ class Detector:
         final_images = np.ascontiguousarray(final_images)  # contiguous
         return final_images
 
+    """
+    basic object enter/exit detection
+    """
+
+    def on_detect(self, stream_object: StreamInDB, detection_results: List[Any]):
+        stream_id = stream_object.id
+        if not stream_id in self.last_detected_objects:
+            self.last_detected_objects[stream_id] = {}
+        now = datetime.now().timestamp()
+        # old_classes = self.last_detected_objects[stream_object.id] or {}
+        # old_classes_list = list(old_classes.keys())
+        # old_classes_set = set(old_classes_list)
+        # new_classes = [result["class"] for result in detection_results]
+        # new_classes_set = set(new_classes)
+        # added = list(new_classes_set - old_classes_set)
+        #
+        # removed = list(old_classes - new_classes)
+        # self.last_detected_objects[stream_id] = detected["classes"]
+        # print("**********************************************")
+        # print("added", [self.names[c] for c in added])
+        # print("removed", [self.names[c] for c in removed])
+        for result in detection_results:
+            cls = result["class"]
+            # object enters
+            if not cls in list(self.last_detected_objects[stream_id].keys()):
+                self.last_detected_objects[stream_id][cls] = {
+                    "time": now,
+                    "sent_enter_notif": False,
+                    "sent_exit_notif": False,
+                }
+            else:
+                self.last_detected_objects[stream_id][cls]["time"] = now
+
+        entered_classes = []
+        exited_classes = []
+        for cls, last_config in list(self.last_detected_objects[stream_id].items()):
+            time_diff = now - last_config["time"]
+            # object not seen in last ? ms, so we detect it as exited
+            # print("----time_diff", time_diff, "  ", now, "  t:", last_config["time"], last_config)
+            if time_diff > 0.02:
+                if last_config["sent_exit_notif"] == False:
+                    self.last_detected_objects[stream_id][cls]["sent_exit_notif"] = True
+                    self.last_detected_objects[stream_id][cls]["sent_enter_notif"] = False
+                    exited_classes.append({
+                        "class": cls,
+                        "label": self.names[cls],
+                        "time": now
+                    })
+            else:
+                if last_config["sent_enter_notif"] == False:
+                    self.last_detected_objects[stream_id][cls]["sent_enter_notif"] = True
+                    self.last_detected_objects[stream_id][cls]["sent_exit_notif"] = False
+                    entered_classes.append({
+                        "class": cls,
+                        "label": self.names[cls],
+                        "time": now
+                    })
+        if len(entered_classes) > 0 or len(exited_classes) > 0:
+            self.notif_enter_and_exits(stream_object, entered_classes, exited_classes)
+
+    def notif_enter_and_exits(self, stream_object: StreamInDB, entered, exited):
+        print("entered  ", entered, "   exited", exited)
+
+    def get_detection_filters(self, stream_object: StreamInDB):
+        boundaries = None
+        include_classes = None
+        if stream_object.configs is not None:
+            for config in stream_object.configs:
+                if config.boundary:
+                    if boundaries is None:
+                        boundaries = []
+                    boundaries.append(np.array(config.boundary))
+                if config.include_classes:
+                    if include_classes is None:
+                        include_classes = []
+                    include_classes.append(config.include_classes)
+        return boundaries, include_classes
+
     def detect(self, stream: LoadStreams2, stream_object: StreamInDB, stream_data: List[Any]):
+
         # print('process_stream >>>>', stream_object.id)
         # return
-        conf_thres = 0.25  # confidence threshold
-        iou_thres = 0.45  # NMS IOU threshold
         max_det = 1000  # maximum detections per image
         agnostic_nms = False  # class-agnostic NMS
+        """
+        # boundaries -> for  detect inside polygons
+        # include_classes -> filter by class: --class 0, or --class 0 2 3
+        """
+        boundaries, include_classes = self.get_detection_filters(stream_object)
 
         path, im0s = stream_data
-        im = self.resize_and_mask_img(im0s, stream_object.boundary,
+        im = self.resize_and_mask_img(im0s, boundaries,
                                       img_size=stream_object.img_size,
                                       stride=stream_object.stride,
                                       auto=stream_object.auto)
-        classes = stream_object.classes  # filter by class: --class 0, or --class 0 2 3
-        if isinstance(classes, list) and len(classes) == 0:
-            classes = None
+
         # Run inference
-        seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
+        windows, dt = [], (Profile(), Profile(), Profile())
         if isinstance(path, list) and len(path) > 0:
             path = path[0]
         with dt[0]:
@@ -101,11 +184,15 @@ class Detector:
 
         # NMS
         with dt[2]:
-            pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
+            pred = non_max_suppression(pred,
+                                       stream_object.confidence_threshold,
+                                       stream_object.iou_threshold,
+                                       include_classes, agnostic_nms,
+                                       max_det=max_det)
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
-            seen += 1
+
             if len(stream) >= 1:  # batch_size >= 1
                 p, im0, frame = path[i], im0s[i].copy(), stream.count
             else:
@@ -113,24 +200,27 @@ class Detector:
             annotator = None
             if self.show_stream:
                 annotator = Annotator(im0, line_width=2, example=str(self.names))
+            detection_results = []
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
                 # Write results
-                results = []
+
                 for *xyxy, conf, cls in reversed(det):
                     image_cls = int(cls)  # integer class
-                    label = self.names[image_cls]
+                    label = self.names.get(image_cls, "Unknown")
                     confidence = float(conf)
-                    results.append({"class": image_cls,
-                                    "label": label,
-                                    "cords": [point.item() for point in xyxy],
-                                    "confidence": confidence})
+                    cords = [point.cpu().item() for point in xyxy]
+                    detection_results.append({"class": image_cls,
+                                              "label": label,
+                                              "cords": cords,
+                                              "confidence": confidence})
                     if self.show_stream:
                         label = f'{label} {confidence:.2f}'
-                        annotator.box_label(xyxy, label, color=colors(image_cls, True))
+                        annotator.box_label(cords, label, color=colors(image_cls, True))
                 # Stream results
-                self.send_result(stream_object, results)
+                self.send_result(stream_object, detection_results)
+            self.on_detect(stream_object, detection_results)
             if self.show_stream:
                 # print(p)
                 im0 = annotator.result()
@@ -139,7 +229,7 @@ class Detector:
                     cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # allow window resize (Linux)
                     cv2.resizeWindow(str(p), im0.shape[1], im0.shape[0])
 
-                if stream_object.boundary:
-                    cv2.polylines(im0, stream_object.boundary, True, (255, 0, 0), 2)
+                if boundaries:
+                    cv2.polylines(im0, boundaries, True, (255, 0, 0), 2)
                 cv2.imshow(str(p), im0)
                 cv2.waitKey(1)  # 1 millisecond
