@@ -76,7 +76,7 @@ def on_detect(_stream_id, _detected, _names):
     print("removed", [_names[c] for c in removed])
 
 
-def crop_img(images: List[np.array], boundary: List[np.array] = None, img_size=640, stride=32, auto=True, ):
+def crop_img(images: List[np.array], boundary: List[np.array] = None, img_size=(640, 640), stride=32, auto=True, ):
     # h: height, w: width, c: channel, b: batch
     if boundary is None:
         return images
@@ -100,7 +100,7 @@ def crop_img(images: List[np.array], boundary: List[np.array] = None, img_size=6
 
 @smart_inference_mode()
 def run(
-        weights=ROOT / 'yolov5s.pt',  # model path or triton URL
+        weights=ROOT / 'yolov5x6.pt',  # model path or triton URL
         source='http://192.168.43.1:8554/live',  # file/dir/URL/glob/screen/0(webcam)
         # source=ROOT / 'data/images',  # file/dir/URL/glob/screen/0(webcam)
         data=ROOT / 'data/coco128.yaml',  # dataset.yaml path
@@ -305,7 +305,7 @@ def run(
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default=ROOT / 'yolov5s.pt', help='model path or triton URL')
+    parser.add_argument('--weights', nargs='+', type=str, default=ROOT / 'yolov5m6.pt', help='model path or triton URL')
     parser.add_argument('--source', type=str,
                         default='0',
                         help='file/dir/URL/glob/screen/0(webcam)')

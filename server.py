@@ -1,16 +1,22 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+import cv2
+import numpy as np
 from fastapi import FastAPI, APIRouter
 from fastapi.openapi.docs import get_swagger_ui_html
 from starlette.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from ai.my_processes import serve_model, send_stream_to_model_process
 from backend.api import api_v1_router
 from backend.config import settings
 from backend.global_log import structlog
-from backend.instances import stream_manager, stream, detector, socket_manager
+from backend.instances import (socket_manager, loop, model_process_in_queue, model_process_out_queue,
+                               shared_data_for_stream_config, detector, stream, stream_manager,
+                               stream_process_out_queue)
 
 logger = structlog.get_logger(__name__)
 
@@ -64,7 +70,7 @@ async def get_state():
 
 @app.get('/server-config', response_model=Any)
 async def get_server_config() -> Any:
-    return settings.model_dump()
+    return settings.model_dump(mode='json')
 
 
 @app.websocket("/ws")
@@ -92,14 +98,19 @@ async def startup_event():
     """
     lazy load model to not locking app start time
     """
-    await asyncio.sleep(2)
-    detector.load_model()
+    await asyncio.sleep(1)
+    pool1 = ThreadPoolExecutor(max_workers=2)
+    # pool2 = ThreadPoolExecutor(max_workers=2)
+    loop.run_in_executor(pool1, serve_model, model_process_in_queue, model_process_out_queue, detector,
+                         shared_data_for_stream_config)
+    # loop.run_in_executor(pool2, send_stream_to_model_process, model_process_in_queue, stream_process_out_queue)
     """
     auto add stream for development purpose
     """
     stream_manager.add_stream(stream)
 
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.01)

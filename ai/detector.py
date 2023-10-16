@@ -11,14 +11,15 @@ from ultralytics.utils.plotting import Annotator, colors
 from ai.models.common import DetectMultiBackend
 from ai.utils.augmentations import letterbox
 from ai.utils.dataloaders import LoadStreams2
-from ai.utils.general import (Profile,
-                              non_max_suppression, scale_boxes)
+from ai.utils.general import (Profile, non_max_suppression, scale_boxes)
 from backend.schemas import StreamInDB
 
+import matplotlib
+matplotlib.use('Agg')
 
 class Detector:
     def __init__(self,
-                 show_stream=True,
+                 show_stream = True,
                  weights: str = 'yolov5s.pt',
                  device: Any = torch.device('cpu'),
                  data: str = 'ai/data/coco128.yaml',
@@ -75,19 +76,33 @@ class Detector:
     basic object enter/exit detection
     """
 
-    def on_detect(self, stream_object: StreamInDB, detection_results: List[Any]):
-        stream_id = stream_object.id
+    def on_detect(self, msg: Any, ):
+        # print('main process')
+        # def on_detect(self, msg):
+        # print("on_detect", msg)
+        # return
+        stream_id = msg["id"]
+        detection_results: List[Any] = msg["results"]
         if not stream_id in self.last_detected_objects:
             self.last_detected_objects[stream_id] = {}
         now = datetime.now().timestamp()
         for result in detection_results:
             cls = result["class"]
+            # img = msg["image"]
+            # img = np.array(img, dtype=np.float32)
+            # img = img.transpose((2, 1, 0))
+            # cv2.imshow("webcam", img)
             # object enters
-            if not cls in list(self.last_detected_objects[stream_id].keys()):
+            # print(1)
+            if not cls in self.last_detected_objects[stream_id]:
                 self.last_detected_objects[stream_id][cls] = {
                     "time": now,
                     "sent_enter_notif": False,
                     "sent_exit_notif": False,
+                    "class": result["class"],
+                    "label": result["label"],
+                    "confidence": result["confidence"],
+                    "cords": result["cords"],
                 }
             else:
                 self.last_detected_objects[stream_id][cls]["time"] = now
@@ -98,13 +113,13 @@ class Detector:
             time_diff = now - last_config["time"]
             # object not seen in last ? ms, so we detect it as exited
             # print("----time_diff", time_diff, "  ", now, "  t:", last_config["time"], last_config)
-            if time_diff > 0.02:
+            if time_diff > 0.01:
                 if last_config["sent_exit_notif"] == False:
                     self.last_detected_objects[stream_id][cls]["sent_exit_notif"] = True
                     self.last_detected_objects[stream_id][cls]["sent_enter_notif"] = False
                     exited_classes.append({
                         "class": cls,
-                        "label": self.names[cls],
+                        "label": last_config["label"],
                         "time": now
                     })
             else:
@@ -113,14 +128,14 @@ class Detector:
                     self.last_detected_objects[stream_id][cls]["sent_exit_notif"] = False
                     entered_classes.append({
                         "class": cls,
-                        "label": self.names[cls],
+                        "label": last_config["label"],
                         "time": now
                     })
         if len(entered_classes) > 0 or len(exited_classes) > 0:
-            self.notif_enter_and_exits(stream_object, entered_classes, exited_classes)
+            self.notif_enter_and_exits(stream_id, entered_classes, exited_classes)
 
-    def notif_enter_and_exits(self, stream_object: StreamInDB, entered, exited):
-        print("entered  ", entered, "   exited", exited)
+    def notif_enter_and_exits(self, stream_id: Any, entered, exited):
+        print(f"stream_id {stream_id}  entered:", entered, "   exited:", exited)
 
     def get_detection_filters(self, stream_object: StreamInDB):
         boundaries = None
@@ -175,7 +190,8 @@ class Detector:
             pred = non_max_suppression(pred,
                                        stream_object.confidence_threshold,
                                        stream_object.iou_threshold,
-                                       include_classes, agnostic_nms,
+                                       include_classes,
+                                       agnostic_nms,
                                        max_det=max_det)
 
         # Process predictions

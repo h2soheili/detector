@@ -1,3 +1,4 @@
+from random import randint
 from typing import Any
 
 from fastapi import APIRouter
@@ -13,9 +14,8 @@ api_v1_router = APIRouter()
 
 @api_v1_router.post('/stream', response_model=StreamInDB)
 async def add_stream(data: StreamCreateDTO) -> Any:
-    print(1)
-    stream = StreamInDB(**data.model_dump(), user=user)
-    # stream = StreamInDB(**data.model_dump(), id=1, user=user)
+    id = randint(11111111, 99999999999)
+    stream = StreamInDB(**data.model_dump(mode='json'), user=user, id=id)
     stream_manager.add_stream(stream)
     return stream
 

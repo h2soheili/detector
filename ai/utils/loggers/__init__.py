@@ -10,11 +10,11 @@ from pathlib import Path
 import pkg_resources as pkg
 import torch
 
-from utils.general import LOGGER, colorstr, cv2
-from utils.loggers.clearml.clearml_utils import ClearmlLogger
-from utils.loggers.wandb.wandb_utils import WandbLogger
-from utils.plots import plot_images, plot_labels, plot_results
-from utils.torch_utils import de_parallel
+from ai.utils import LOGGER, colorstr, cv2
+from ai.utils import ClearmlLogger
+from ai.utils import WandbLogger
+from ai.utils import plot_images, plot_labels, plot_results
+from ai.utils import de_parallel
 
 LOGGERS = ('csv', 'tb', 'wandb', 'clearml', 'comet')  # *.csv, TensorBoard, Weights & Biases, ClearML
 RANK = int(os.getenv('RANK', -1))
@@ -50,7 +50,7 @@ try:
         import comet_ml
 
         assert hasattr(comet_ml, '__version__')  # verify package import not local dir
-        from utils.loggers.comet import CometLogger
+        from ai.utils import CometLogger
 
     else:
         comet_ml = None

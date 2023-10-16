@@ -56,6 +56,7 @@ class StreamCreateDTO(BaseModel):
     stride: int = 32
     auto: bool = True
     vid_stride: int = 1
+    debounce_time: float = 0.0
     confidence_threshold: float = 0.25  # confidence threshold
     iou_threshold: float = 0.45  # NMS IOU threshold
     configs: Optional[List[DetectorConfigInDB]] = None

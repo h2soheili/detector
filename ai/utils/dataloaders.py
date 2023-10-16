@@ -437,7 +437,7 @@ class LoadStreams2:
     def __init__(self, sources='file.streams',
                  img_size=640, stride=32, auto=True,
                  transforms=None, vid_stride=1,
-                 debounce_time=0.0):
+                 debounce_time=0):
         torch.backends.cudnn.benchmark = True  # faster for fixed-size inference
         self.mode = 'stream'
         self.img_size = img_size
@@ -498,7 +498,8 @@ class LoadStreams2:
                     LOGGER.warning('WARNING ⚠️ Video stream unresponsive, please check your IP camera connection.')
                     self.imgs[i] = np.zeros_like(self.imgs[i])
                     cap.open(stream)  # re-open stream if signal was lost
-            time.sleep(self.debounce_time)  # wait time
+            if self.debounce_time > 0:
+                time.sleep(self.debounce_time)  # wait time
 
     def __iter__(self):
         self.count = -1
@@ -519,6 +520,7 @@ class LoadStreams2:
         #     im = np.ascontiguousarray(im)  # contiguous
 
         return self.sources, im0
+
     def __len__(self):
         return len(self.sources)  # 1E12 frames = 32 streams at 30 FPS for 30 years
 
