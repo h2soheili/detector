@@ -5,14 +5,17 @@ from multiprocessing.shared_memory import SharedMemory
 import torch.multiprocessing as torch_mp
 from shared_memory_dict import SharedMemoryDict
 from ultralytics import YOLO
-
+from ai.detector import Detector
 from ai.helpers import get_device
 from ai.model import model_process_target
 
 
-def serve_model(model_process_in_queue: torch_mp.Queue, model_process_out_queue: torch_mp.Queue, detector,
+def serve_model(model_process_in_queue: torch_mp.Queue,
+                model_process_out_queue: torch_mp.Queue,
+                detector: Detector,
                 shared_data_for_stream_config: SharedMemoryDict):
-    num_processes = 6
+    # num_processes = 6
+    num_processes = 4
     seed = 1
     cpu_count = os.cpu_count()
     device = get_device("cpu")
@@ -35,7 +38,7 @@ def serve_model(model_process_in_queue: torch_mp.Queue, model_process_out_queue:
         processes.append(p)
     for p in processes:
         p.start()
-    run_loop = True
+    run_loop = 1
     while run_loop:
         msg = model_process_out_queue.get()
         if msg:
@@ -49,7 +52,7 @@ def serve_model(model_process_in_queue: torch_mp.Queue, model_process_out_queue:
 
 def send_stream_to_model_process(model_process_in_queue: torch_mp.Queue,
                                  stream_process_out_queue: mp.Queue):
-    run_loop = True
+    run_loop = 1
     while run_loop:
         # print('1 process')
         msg = stream_process_out_queue.get()

@@ -1,14 +1,14 @@
+import datetime
 import math
 import multiprocessing as mp
 import os
 import sys
-import time
-from multiprocessing import Process, Queue
+from multiprocessing import Process
 from typing import Any
 from urllib.parse import urlparse
-import torch.multiprocessing as torch_mp
+
 import cv2
-import numpy as np
+import torch.multiprocessing as torch_mp
 from ultralytics.utils.checks import check_requirements
 
 from backend.schemas import StreamInDB
@@ -77,7 +77,9 @@ class StreamProcessor(Process):
                     # self.images = im
                     self.model_process_in_queue.put({
                         "id": self.stream_id,
-                        "data": im.tolist(),
+                        "image": im,
+                        "timestamp": datetime.datetime.now(),
+                        "image_channels": "BGR"
                     })
                 else:
                     print('WARNING ⚠️ Video stream unresponsive, please check your IP camera connection.')

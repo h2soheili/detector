@@ -1,4 +1,5 @@
 import os
+import time
 from collections import defaultdict
 from datetime import datetime
 from typing import List
@@ -8,33 +9,8 @@ import numpy as np
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
-from ai.helpers import get_device
-from ai.utils.augmentations import letterbox
+from ai.helpers import get_device, resize_and_mask_img
 from ai.utils.dataloaders import LoadStreams2
-
-
-def resize_and_mask_img(img: np.array,
-                        boundary: List[np.array] = None,
-                        img_size=(640, 640),
-                        stride=32,
-                        auto=True):
-    # h: height, w: width, c: channel, b: batch
-    apply_mask = boundary is not None
-    # img = img[..., ::-1]  # BGR to RGB
-    img_copy = img.copy()
-    resized_img = letterbox(img_copy, img_size, stride=stride, auto=auto)[0]
-    if apply_mask:
-        # https://stackoverflow.com/a/48301735
-        mask = np.zeros(img_copy.shape[:2], np.uint8)
-        cv2.drawContours(mask, boundary, -1, (255, 255, 255), -1, cv2.LINE_AA)
-        dst = cv2.bitwise_and(img_copy, img_copy, mask=mask)
-        dst = letterbox(dst, img_size, stride=stride, auto=auto)[0]
-    else:
-        dst = letterbox(img, img_size, stride=stride, auto=auto)[0]
-    # dst = dst.transpose((2, 0, 1))  # HWC to CHW
-    dst = np.ascontiguousarray(dst)  # contiguous
-    return dst, resized_img
-
 
 if __name__ == '__main__':
     num_processes = 2
@@ -57,34 +33,54 @@ if __name__ == '__main__':
     # exit()
     track_config = dict({
         "0": 0.1,
-        "1": 1,
+        "1": 0.3,
     })
     # track_history = defaultdict(lambda: {})
     track_history = defaultdict(lambda: [])
 
+    data = {
+        "images": [],
+        "resized_images": [],
+    }
     for path, images0 in dataset:
         now = datetime.now().timestamp()
         # print(2)
         # print(len(images0))
         image1, resized_img = resize_and_mask_img(images0[0], points, img_size=img_size, stride=32, auto=True)
-
-        results: Results = model.track(image1,
+        data["images"].append(image1)
+        data["resized_images"].append(resized_img)
+        # if len(data["images"]) < 5:
+        #     continue
+        # d = np.array(data["images"]).transpose(0, 3, 1, 2)
+        # d = np.ascontiguousarray(d)
+        results: Results = model.track(resized_img,
                                        stream=False,
                                        classes=None,
                                        conf=0.25,
                                        iou=0.75,
-                                       imgsz=image1.shape[:2],
+                                       imgsz=resized_img.shape[:2],
                                        device=device,
                                        max_det=20,
-                                       verbose=False)
-
+                                       persist=False,
+                                       tracker="bytetrack.yaml",
+                                       verbose=True)
+        time.sleep(0.2)
         # Get the boxes and track IDs
         if results[0].boxes.shape[0] == 0:
             continue
-        cl = results[0].boxes.cls.int().cpu().tolist() if results[0].boxes.cls is not None else []
+        object_classes = results[0].boxes.cls.int().cpu().tolist() if results[0].boxes.cls is not None else []
         track_ids = results[0].boxes.id.int().cpu().tolist() if results[0].boxes.id is not None else []
-
-        print("track_ids", track_ids, " classes", cl)
+        # for box in results[0].boxes
+        if len(object_classes) != len(track_ids):
+            print("track_ids", track_ids, " classes", object_classes)
+            break
+        print("track_ids", track_ids, " classes", object_classes)
+            # Visualize the results on the frame
+        annotated_frame = results[0].plot()
+        # Display the annotated frame
+        cv2.imshow("YOLOv8 Tracking", annotated_frame)
+        # data["images"].clear()
+        # data["resized_images"].clear()
 
         # print(1)
         # new_points = [

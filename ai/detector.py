@@ -1,25 +1,20 @@
 import os
-import platform
-from datetime import datetime
 from typing import Any, List, Dict
 
 import cv2
+import matplotlib
 import numpy as np
 import torch
-from ultralytics.utils.plotting import Annotator, colors
 
-from ai.models.common import DetectMultiBackend
-from ai.utils.augmentations import letterbox
-from ai.utils.dataloaders import LoadStreams2
-from ai.utils.general import (Profile, non_max_suppression, scale_boxes)
+from ai.helpers import letterbox
 from backend.schemas import StreamInDB
 
-import matplotlib
 matplotlib.use('Agg')
+
 
 class Detector:
     def __init__(self,
-                 show_stream = True,
+                 show_stream=True,
                  weights: str = 'yolov5s.pt',
                  device: Any = torch.device('cpu'),
                  data: str = 'ai/data/coco128.yaml',
@@ -37,10 +32,7 @@ class Detector:
         self.stride, self.names, self.pt = None, None, None
         # last_detected_objects - > {"stream_id": {"class_id": {"time": timestamp}}}
         self.last_detected_objects: Dict[int, Dict[int, Any]] = {}
-
-    def load_model(self):
-        self.model = DetectMultiBackend(self.weights, device=self.device, dnn=self.dnn, data=self.data, fp16=self.half)
-        self.stride, self.names, self.pt = self.model.stride, self.model.names, self.model.pt
+        self.exited_items: Dict[int, Any] = {}
 
     def send_result(self, stream_object: StreamInDB, results):
         # print("result of stream with id: ", stream_object.id, results)
@@ -82,57 +74,96 @@ class Detector:
         # print("on_detect", msg)
         # return
         stream_id = msg["id"]
-        detection_results: List[Any] = msg["results"]
-        if not stream_id in self.last_detected_objects:
-            self.last_detected_objects[stream_id] = {}
-        now = datetime.now().timestamp()
-        for result in detection_results:
-            cls = result["class"]
-            # img = msg["image"]
-            # img = np.array(img, dtype=np.float32)
-            # img = img.transpose((2, 1, 0))
-            # cv2.imshow("webcam", img)
-            # object enters
-            # print(1)
-            if not cls in self.last_detected_objects[stream_id]:
-                self.last_detected_objects[stream_id][cls] = {
-                    "time": now,
-                    "sent_enter_notif": False,
-                    "sent_exit_notif": False,
-                    "class": result["class"],
-                    "label": result["label"],
-                    "confidence": result["confidence"],
-                    "cords": result["cords"],
-                }
-            else:
-                self.last_detected_objects[stream_id][cls]["time"] = now
+        detection_results: Dict[int, Dict[int, Any]] = msg["results"]
 
-        entered_classes = []
-        exited_classes = []
-        for cls, last_config in list(self.last_detected_objects[stream_id].items()):
-            time_diff = now - last_config["time"]
-            # object not seen in last ? ms, so we detect it as exited
-            # print("----time_diff", time_diff, "  ", now, "  t:", last_config["time"], last_config)
-            if time_diff > 0.01:
-                if last_config["sent_exit_notif"] == False:
-                    self.last_detected_objects[stream_id][cls]["sent_exit_notif"] = True
-                    self.last_detected_objects[stream_id][cls]["sent_enter_notif"] = False
-                    exited_classes.append({
-                        "class": cls,
-                        "label": last_config["label"],
-                        "time": now
-                    })
+        if stream_id not in self.last_detected_objects:
+            self.last_detected_objects[stream_id] = {}
+
+        entered: Dict[int, Dict[int, Any]] = {}
+        exited: Dict[int, Dict[int, Any]] = {}
+
+        for item_class, class_objects in detection_results.items():
+            if item_class not in self.last_detected_objects[stream_id]:
+                entered[item_class] = class_objects
             else:
-                if last_config["sent_enter_notif"] == False:
-                    self.last_detected_objects[stream_id][cls]["sent_enter_notif"] = True
-                    self.last_detected_objects[stream_id][cls]["sent_exit_notif"] = False
-                    entered_classes.append({
-                        "class": cls,
-                        "label": last_config["label"],
-                        "time": now
-                    })
-        if len(entered_classes) > 0 or len(exited_classes) > 0:
-            self.notif_enter_and_exits(stream_id, entered_classes, exited_classes)
+                last_class_objects = self.last_detected_objects[stream_id][item_class]
+                last_ids = len(last_class_objects.keys())
+                new_ids = len(class_objects.keys())
+                copy_of_last_class_objects = last_class_objects.copy()
+                copy_of_class_objects = class_objects.copy()
+                new_class_objects_is_base = True if new_ids > last_ids else False
+                bigger_dict = copy_of_class_objects if new_class_objects_is_base else copy_of_last_class_objects
+
+                for item_id, item in bigger_dict.items():
+                    if new_class_objects_is_base:
+                        if item_id not in copy_of_last_class_objects:
+                            entered[item_id] = item
+                        else:
+                            del copy_of_last_class_objects[item_id]
+                    else:
+                        if item_id not in copy_of_class_objects:
+                            exited[item_id] = item
+                        else:
+                            del copy_of_class_objects[item_id]
+
+                if new_class_objects_is_base:
+                    for item_id, item in copy_of_last_class_objects.items():
+                        exited[item_id] = item
+                else:
+                    for item_id, item in copy_of_class_objects.items():
+                        entered[item_id] = item
+
+        self.last_detected_objects[stream_id] = detection_results
+        self.notif_enter_and_exits(stream_id, entered, exited)
+
+        # now = datetime.now().timestamp()
+        # for result in detection_results:
+        #     cls = result["class"]
+        #     # img = msg["image"]
+        #     # img = np.array(img, dtype=np.float32)
+        #     # img = img.transpose((2, 1, 0))
+        #     # cv2.imshow("webcam", img)
+        #     # object enters
+        #     # print(1)
+        #     if not cls in self.last_detected_objects[stream_id]:
+        #         self.last_detected_objects[stream_id][cls] = {
+        #             "time": msg["timestamp"],
+        #             "sent_enter_notif": False,
+        #             "sent_exit_notif": False,
+        #             "class": result["class"],
+        #             "label": result["label"],
+        #             "confidence": result["confidence"],
+        #             "cords": result["cords"],
+        #         }
+        #     else:
+        #         self.last_detected_objects[stream_id][cls]["time"] = now
+        #
+        # entered_classes = []
+        # exited_classes = []
+        # for cls, last_config in list(self.last_detected_objects[stream_id].items()):
+        #     time_diff = now - last_config["time"]
+        #     # object not seen in last ? ms, so we detect it as exited
+        #     # print("----time_diff", time_diff, "  ", now, "  t:", last_config["time"], last_config)
+        #     if time_diff > 0.01:
+        #         if last_config["sent_exit_notif"] == False:
+        #             self.last_detected_objects[stream_id][cls]["sent_exit_notif"] = True
+        #             self.last_detected_objects[stream_id][cls]["sent_enter_notif"] = False
+        #             exited_classes.append({
+        #                 "class": cls,
+        #                 "label": last_config["label"],
+        #                 "time": now
+        #             })
+        #     else:
+        #         if last_config["sent_enter_notif"] == False:
+        #             self.last_detected_objects[stream_id][cls]["sent_enter_notif"] = True
+        #             self.last_detected_objects[stream_id][cls]["sent_exit_notif"] = False
+        #             entered_classes.append({
+        #                 "class": cls,
+        #                 "label": last_config["label"],
+        #                 "time": now
+        #             })
+        # if len(entered_classes) > 0 or len(exited_classes) > 0:
+        #     self.notif_enter_and_exits(stream_id, entered_classes, exited_classes)
 
     def notif_enter_and_exits(self, stream_id: Any, entered, exited):
         print(f"stream_id {stream_id}  entered:", entered, "   exited:", exited)
@@ -151,89 +182,3 @@ class Detector:
                         include_classes = []
                     include_classes.append(config.include_classes)
         return boundaries, include_classes
-
-    def detect(self, stream: LoadStreams2, stream_object: StreamInDB, stream_data: List[Any]):
-
-        # print('process_stream >>>>', stream_object.id)
-        # return
-        max_det = 1000  # maximum detections per image
-        agnostic_nms = False  # class-agnostic NMS
-        """
-        # boundaries -> for  detect inside polygons
-        # include_classes -> filter by class: --class 0, or --class 0 2 3
-        """
-        boundaries, include_classes = self.get_detection_filters(stream_object)
-
-        path, im0s = stream_data
-        im = self.resize_and_mask_img(im0s, boundaries,
-                                      img_size=stream_object.img_size,
-                                      stride=stream_object.stride,
-                                      auto=stream_object.auto)
-
-        # Run inference
-        windows, dt = [], (Profile(), Profile(), Profile())
-        if isinstance(path, list) and len(path) > 0:
-            path = path[0]
-        with dt[0]:
-            im = torch.from_numpy(im).to(self.model.device)
-            im = im.half() if self.model.fp16 else im.float()  # uint8 to fp16/32
-            im /= 255  # 0 - 255 to 0.0 - 1.0
-            if len(im.shape) == 3:
-                im = im[None]  # expand for batch dim
-
-        # Inference
-        with dt[1]:
-            pred = self.model(im, augment=True, visualize=False)
-
-        # NMS
-        with dt[2]:
-            pred = non_max_suppression(pred,
-                                       stream_object.confidence_threshold,
-                                       stream_object.iou_threshold,
-                                       include_classes,
-                                       agnostic_nms,
-                                       max_det=max_det)
-
-        # Process predictions
-        for i, det in enumerate(pred):  # per image
-
-            if len(stream) >= 1:  # batch_size >= 1
-                p, im0, frame = path[i], im0s[i].copy(), stream.count
-            else:
-                p, im0, frame = path, im0s.copy(), getattr(stream, 'frame', 0)
-            annotator = None
-            if self.show_stream:
-                annotator = Annotator(im0, line_width=2, example=str(self.names))
-            detection_results = []
-            if len(det):
-                # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
-                # Write results
-
-                for *xyxy, conf, cls in reversed(det):
-                    image_cls = int(cls)  # integer class
-                    label = self.names.get(image_cls, "Unknown")
-                    confidence = float(conf)
-                    cords = [point.cpu().item() for point in xyxy]
-                    detection_results.append({"class": image_cls,
-                                              "label": label,
-                                              "cords": cords,
-                                              "confidence": confidence})
-                    if self.show_stream:
-                        label = f'{label} {confidence:.2f}'
-                        annotator.box_label(cords, label, color=colors(image_cls, True))
-                # Stream results
-                self.send_result(stream_object, detection_results)
-            self.on_detect(stream_object, detection_results)
-            if self.show_stream:
-                # print(p)
-                im0 = annotator.result()
-                if platform.system() == 'Linux' and p not in windows:
-                    windows.append(p)
-                    cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # allow window resize (Linux)
-                    cv2.resizeWindow(str(p), im0.shape[1], im0.shape[0])
-
-                if boundaries:
-                    cv2.polylines(im0, boundaries, True, (255, 0, 0), 2)
-                cv2.imshow(str(p), im0)
-                cv2.waitKey(1)  # 1 millisecond
